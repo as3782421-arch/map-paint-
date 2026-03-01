@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MapPainter — Geography Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0e1117;
+  --panel: #161b24;
+  --border: rgba(255,255,255,0.08);
+  --text: #e8edf2;
+  --muted: #6b7a8d;
+  --accent: #4d9fff;
+  --font: 'DM Sans', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.2rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.logo {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  white-space: nowrap;
+  margin-right: 0.5rem;
+}
+.logo span { color: var(--accent); }
+
+.divider {
+  width: 1px; height: 28px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── TOOL BUTTONS ── */
+.tool-group { display: flex; gap: 0.4rem; align-items: center; }
+.tool-label {
+  font-size: 0.7rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-weight: 600; white-space: nowrap;
+}
+.tool-btn {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 0.8rem; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.tool-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
+.tool-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.tool-btn .icon { font-size: 1rem; }
+
+/* ── COLOUR PICKER ── */
+.color-section { display: flex; align-items: center; gap: 0.5rem; }
+.color-swatches { display: flex; gap: 0.35rem; align-items: center; }
+.swatch {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.swatch:hover { transform: scale(1.15); }
+.swatch.active { border-color: white; transform: scale(1.15); }
+
+.color-input-wrap {
+  position: relative;
+  width: 26px; height: 26px;
+}
+.custom-color-btn {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  border: 2px dashed var(--muted);
+  background: transparent;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; color: var(--muted);
+  transition: all 0.2s;
+}
+.custom-color-btn:hover { border-color: var(--text); color: var(--text); }
+#custom-color-input {
+  position: absolute; inset: 0;
+  opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+
+/* ── ERASER SIZE / CIRCLE SIZE ── */
+.slider-wrap { display: flex; align-items: center; gap: 0.5rem; }
+.slider-wrap input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px; height: 4px;
+  background: var(--border);
+  border-radius: 2px; outline: none;
+  cursor: pointer;
+}
+.slider-wrap input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.slider-val {
+  font-size: 0.75rem; color: var(--muted);
+  min-width: 28px; text-align: right;
+}
+
+/* ── RIGHT ACTIONS ── */
+.actions { display: flex; gap: 0.4rem; margin-left: auto; }
+.action-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 0.8rem; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.action-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
+.action-btn.danger:hover { color: #ff6b6b; border-color: rgba(255,107,107,0.3); }
+.action-btn.primary {
+  background: var(--accent); border-color: var(--accent);
+  color: white;
+}
+.action-btn.primary:hover { opacity: 0.85; }
+
+/* ── MAP AREA ── */
+.map-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+#world-map {
+  width: 100%; height: 100%;
+}
+
+/* country paths */
+.country {
+  fill: #1c2a1c;
+  stroke: #0a0a0a;
+  stroke-width: 0.5px;
+  transition: fill 0.15s;
+  cursor: pointer;
+}
+.country:hover {
+  stroke: rgba(255,255,255,0.3);
+  stroke-width: 1px;
+}
+
+/* ocean */
+.ocean { fill: #0d1f35; }
+.graticule { fill: none; stroke: rgba(255,255,255,0.04); stroke-width: 0.5px; }
+
+/* ── LASSO CIRCLE OVERLAY ── */
+#lasso-canvas {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+
+/* ── TOOLTIP ── */
+.tooltip {
+  position: absolute;
+  background: rgba(10,12,18,0.95);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.8rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 50;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+.tooltip.visible { opacity: 1; }
+.tooltip-name { font-weight: 600; margin-bottom: 0.15rem; }
+.tooltip-continent { font-size: 0.72rem; color: var(--muted); }
+.tooltip-color { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+.tooltip-color-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ── CIRCLE MODE CURSOR ── */
+.circle-cursor {
+  position: absolute;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 40;
+  transform: translate(-50%, -50%);
+  display: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+}
+
+/* ── STATUS BAR ── */
+.statusbar {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.4rem 1.2rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem; color: var(--muted);
+  flex-shrink: 0;
+}
+.status-item { display: flex; align-items: center; gap: 0.4rem; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #51cf66; }
+
+/* ── CONTINENT LEGEND ── */
+.legend {
+  position: absolute;
+  bottom: 2.5rem; right: 1rem;
+  background: rgba(14,17,23,0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  font-size: 0.72rem;
+  backdrop-filter: blur(10px);
+  z-index: 30;
+}
+.legend-title {
+  font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 0.5rem; font-size: 0.65rem;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-bottom: 0.3rem; cursor: pointer;
+  padding: 0.2rem 0.3rem; border-radius: 4px;
+  transition: background 0.15s;
+}
+.legend-item:hover { background: rgba(255,255,255,0.05); }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.legend-name { color: var(--text); }
+
+/* ── UNDO INDICATOR ── */
+.undo-flash {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  background: rgba(0,0,0,0.8);
+  color: white; border-radius: 10px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.85rem; font-weight: 600;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.3s; z-index: 100;
+}
+</style>
+</head>
+<body>
+
+<!-- TOP TOOLBAR -->
+<div class="topbar">
+  <div class="logo">Map<span>Painter</span></div>
+  <div class="divider"></div>
+
+  <!-- TOOLS -->
+  <div class="tool-group">
+    <span class="tool-label">Tool</span>
+    <button class="tool-btn active" id="btn-paint" onclick="setTool('paint')">
+      <span class="icon">🎨</span> Paint
+    </button>
+    <button class="tool-btn" id="btn-circle" onclick="setTool('circle')">
+      <span class="icon">⭕</span> Circle Fill
+    </button>
+    <button class="tool-btn" id="btn-erase" onclick="setTool('erase')">
+      <span class="icon">🧹</span> Erase
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- COLOURS -->
+  <div class="color-section">
+    <span class="tool-label">Colour</span>
+    <div class="color-swatches" id="swatches">
+      <div class="swatch active" style="background:#e63946" data-color="#e63946" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#f4a261" data-color="#f4a261" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#f9c74f" data-color="#f9c74f" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#52b788" data-color="#52b788" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#4895ef" data-color="#4895ef" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#9b5de5" data-color="#9b5de5" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#ff6eb4" data-color="#ff6eb4" onclick="setColor(this)"></div>
+      <div class="swatch" style="background:#ffffff" data-color="#ffffff" onclick="setColor(this)" style="border:1px solid #333"></div>
+      <div class="color-input-wrap" title="Custom colour">
+        <div class="custom-color-btn">+</div>
+        <input type="color" id="custom-color-input" value="#ff9900" oninput="setCustomColor(this.value)">
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CIRCLE SIZE -->
+  <div class="slider-wrap" id="circle-size-wrap" style="display:none">
+    <span class="tool-label">Size</span>
+    <input type="range" min="20" max="300" value="80" id="circle-size-slider" oninput="updateCircleSize(this.value)">
+    <span class="slider-val" id="circle-size-val">80px</span>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="actions">
+    <button class="action-btn" onclick="undoLast()" title="Ctrl+Z">↩ Undo</button>
+    <button class="action-btn danger" onclick="clearAll()">🗑 Clear</button>
+    <button class="action-btn primary" onclick="saveScreenshot()">📸 Screenshot</button>
+  </div>
+</div>
+
+<!-- MAP -->
+<div class="map-container" id="map-container">
+  <svg id="world-map"></svg>
+  <canvas id="lasso-canvas"></canvas>
+  <div class="circle-cursor" id="circle-cursor"></div>
+  <div class="tooltip" id="tooltip">
+    <div class="tooltip-name" id="tt-name"></div>
+    <div class="tooltip-continent" id="tt-continent"></div>
+    <div class="tooltip-color" id="tt-color" style="display:none">
+      <div class="tooltip-color-dot" id="tt-color-dot"></div>
+      <span id="tt-color-label"></span>
+    </div>
+  </div>
+
+  <!-- CONTINENT LEGEND -->
+  <div class="legend">
+    <div class="legend-title">Paint Continent</div>
+    <div class="legend-item" onclick="paintContinent('Africa')"><div class="legend-dot" style="background:#8b5e3c"></div><span class="legend-name">Africa</span></div>
+    <div class="legend-item" onclick="paintContinent('Asia')"><div class="legend-dot" style="background:#c9963a"></div><span class="legend-name">Asia</span></div>
+    <div class="legend-item" onclick="paintContinent('Europe')"><div class="legend-dot" style="background:#4a7c59"></div><span class="legend-name">Europe</span></div>
+    <div class="legend-item" onclick="paintContinent('North America')"><div class="legend-dot" style="background:#3a6b8a"></div><span class="legend-name">North America</span></div>
+    <div class="legend-item" onclick="paintContinent('South America')"><div class="legend-dot" style="background:#7a4a8a"></div><span class="legend-name">South America</span></div>
+    <div class="legend-item" onclick="paintContinent('Oceania')"><div class="legend-dot" style="background:#4a8a7a"></div><span class="legend-name">Oceania</span></div>
+    <div class="legend-item" onclick="paintContinent('Antarctica')"><div class="legend-dot" style="background:#7a8a9a"></div><span class="legend-name">Antarctica</span></div>
+  </div>
+
+  <div class="undo-flash" id="undo-flash">Undone</div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <div class="status-item"><div class="status-dot"></div> Ready</div>
+  <div class="status-item" id="status-tool">Tool: Paint</div>
+  <div class="status-item" id="status-hover">Hover over a country</div>
+  <div class="status-item" id="status-painted">Painted: 0 countries</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let currentTool = 'paint';
+let currentColor = '#e63946';
+let circleRadius = 80;
+let paintedColors = {}; // countryId -> color
+let history = []; // for undo
+let paintedCount = 0;
+let isDrawingCircle = false;
+let circleStart = null;
+let projection, pathGenerator, svg, countries;
+
+// ══════════════════════════════════════════
+// TOOL CONTROL
+// ══════════════════════════════════════════
+function setTool(tool) {
+  currentTool = tool;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + tool).classList.add('active');
+  document.getElementById('status-tool').textContent = 'Tool: ' + tool.charAt(0).toUpperCase() + tool.slice(1);
+
+  const circleSizeWrap = document.getElementById('circle-size-wrap');
+  const circleCursor = document.getElementById('circle-cursor');
+  const mapContainer = document.getElementById('map-container');
+
+  if (tool === 'circle') {
+    circleSizeWrap.style.display = 'flex';
+    circleCursor.style.display = 'block';
+    mapContainer.style.cursor = 'none';
+  } else {
+    circleSizeWrap.style.display = 'none';
+    circleCursor.style.display = 'none';
+    mapContainer.style.cursor = tool === 'erase' ? 'cell' : 'crosshair';
+  }
+}
+
+function setColor(el) {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  currentColor = el.dataset.color;
+}
+
+function setCustomColor(val) {
+  currentColor = val;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+}
+
+function updateCircleSize(val) {
+  circleRadius = parseInt(val);
+  document.getElementById('circle-size-val').textContent = val + 'px';
+  const c = document.getElementById('circle-cursor');
+  c.style.width = (circleRadius * 2) + 'px';
+  c.style.height = (circleRadius * 2) + 'px';
+}
+
+// ══════════════════════════════════════════
+// PAINT FUNCTIONS
+// ══════════════════════════════════════════
+function paintCountry(el, color) {
+  const id = el.getAttribute('data-id');
+  const prevColor = paintedColors[id] || null;
+  history.push({ id, prevColor });
+  if (history.length > 100) history.shift();
+
+  if (color === null) {
+    delete paintedColors[id];
+    el.style.fill = '';
+    el.style.fill = '#1c2a1c';
+  } else {
+    paintedColors[id] = color;
+    el.style.fill = color;
+  }
+  updatePaintedCount();
+}
+
+function paintContinent(continentName) {
+  const batch = [];
+  document.querySelectorAll('.country').forEach(el => {
+    const cont = el.getAttribute('data-continent');
+    if (cont === continentName) {
+      const id = el.getAttribute('data-id');
+      batch.push({ id, prevColor: paintedColors[id] || null });
+      paintedColors[id] = currentColor;
+      el.style.fill = currentColor;
+    }
+  });
+  if (batch.length > 0) {
+    history.push({ batch });
+    if (history.length > 50) history.shift();
+  }
+  updatePaintedCount();
+}
+
+function paintCircleArea(cx, cy) {
+  document.querySelectorAll('.country').forEach(el => {
+    const bbox = el.getBoundingClientRect();
+    const mapRect = document.getElementById('map-container').getBoundingClientRect();
+    const bx = bbox.left - mapRect.left + bbox.width / 2;
+    const by = bbox.top - mapRect.top + bbox.height / 2;
+    const dist = Math.sqrt((bx - cx) ** 2 + (by - cy) ** 2);
+    if (dist < circleRadius) {
+      paintCountry(el, currentColor);
+    }
+  });
+}
+
+function eraseCircleArea(cx, cy) {
+  document.querySelectorAll('.country').forEach(el => {
+    const bbox = el.getBoundingClientRect();
+    const mapRect = document.getElementById('map-container').getBoundingClientRect();
+    const bx = bbox.left - mapRect.left + bbox.width / 2;
+    const by = bbox.top - mapRect.top + bbox.height / 2;
+    const dist = Math.sqrt((bx - cx) ** 2 + (by - cy) ** 2);
+    if (dist < circleRadius) {
+      paintCountry(el, null);
+    }
+  });
+}
+
+function updatePaintedCount() {
+  paintedCount = Object.keys(paintedColors).length;
+  document.getElementById('status-painted').textContent = 'Painted: ' + paintedCount + ' countries';
+}
+
+// ══════════════════════════════════════════
+// UNDO
+// ══════════════════════════════════════════
+function undoLast() {
+  if (history.length === 0) return;
+  const last = history.pop();
+
+  if (last.batch) {
+    last.batch.forEach(item => {
+      const el = document.querySelector(`[data-id="${item.id}"]`);
+      if (el) {
+        if (item.prevColor) {
+          paintedColors[item.id] = item.prevColor;
+          el.style.fill = item.prevColor;
+        } else {
+          delete paintedColors[item.id];
+          el.style.fill = '#1c2a1c';
+        }
+      }
+    });
+  } else {
+    const el = document.querySelector(`[data-id="${last.id}"]`);
+    if (el) {
+      if (last.prevColor) {
+        paintedColors[last.id] = last.prevColor;
+        el.style.fill = last.prevColor;
+      } else {
+        delete paintedColors[last.id];
+        el.style.fill = '#1c2a1c';
+      }
+    }
+  }
+
+  updatePaintedCount();
+  const flash = document.getElementById('undo-flash');
+  flash.style.opacity = '1';
+  setTimeout(() => flash.style.opacity = '0', 800);
+}
+
+function clearAll() {
+  if (!confirm('Clear all painted countries?')) return;
+  history = [];
+  paintedColors = {};
+  document.querySelectorAll('.country').forEach(el => el.style.fill = '#1c2a1c');
+  updatePaintedCount();
+}
+
+// keyboard undo
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoLast(); }
+});
+
+// ══════════════════════════════════════════
+// SCREENSHOT
+// ══════════════════════════════════════════
+function saveScreenshot() {
+  const svgEl = document.getElementById('world-map');
+  const svgData = new XMLSerializer().serializeToString(svgEl);
+  const canvas = document.createElement('canvas');
+  const rect = svgEl.getBoundingClientRect();
+  canvas.width = rect.width * 2;
+  canvas.height = rect.height * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+  const img = new Image();
+  const blob = new Blob([svgData], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    ctx.fillStyle = '#0e1117';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, rect.width, rect.height);
+    URL.revokeObjectURL(url);
+    const link = document.createElement('a');
+    link.download = 'map-' + new Date().toISOString().slice(0,10) + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+  img.src = url;
+}
+
+// ══════════════════════════════════════════
+// TOOLTIP
+// ══════════════════════════════════════════
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, name, continent) {
+  const mapRect = document.getElementById('map-container').getBoundingClientRect();
+  let x = e.clientX - mapRect.left + 14;
+  let y = e.clientY - mapRect.top - 10;
+  if (x + 180 > mapRect.width) x -= 200;
+  if (y < 0) y = 10;
+
+  document.getElementById('tt-name').textContent = name;
+  document.getElementById('tt-continent').textContent = continent;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+  tooltip.classList.add('visible');
+  document.getElementById('status-hover').textContent = name + ' · ' + continent;
+}
+function hideTooltip() {
+  tooltip.classList.remove('visible');
+  document.getElementById('status-hover').textContent = 'Hover over a country';
+}
+
+// ══════════════════════════════════════════
+// CIRCLE CURSOR FOLLOW
+// ══════════════════════════════════════════
+const mapContainer = document.getElementById('map-container');
+const circleCursor = document.getElementById('circle-cursor');
+
+mapContainer.addEventListener('mousemove', e => {
+  const rect = mapContainer.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  if (currentTool === 'circle') {
+    circleCursor.style.left = x + 'px';
+    circleCursor.style.top = y + 'px';
+    circleCursor.style.width = (circleRadius * 2) + 'px';
+    circleCursor.style.height = (circleRadius * 2) + 'px';
+  }
+});
+
+mapContainer.addEventListener('mouseleave', () => hideTooltip());
+
+// Circle fill click on map background
+mapContainer.addEventListener('click', e => {
+  if (currentTool !== 'circle') return;
+  if (e.target.classList.contains('country')) return;
+  const rect = mapContainer.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  paintCircleArea(x, y);
+});
+
+// ══════════════════════════════════════════
+// LOAD WORLD MAP
+// ══════════════════════════════════════════
+async function loadMap() {
+  const width = document.getElementById('map-container').offsetWidth;
+  const height = document.getElementById('map-container').offsetHeight;
+
+  svg = d3.select('#world-map')
+    .attr('width', width)
+    .attr('height', height);
+
+  projection = d3.geoNaturalEarth1()
+    .scale(width / 6.2)
+    .translate([width / 2, height / 2]);
+
+  pathGenerator = d3.geoPath().projection(projection);
+
+  // Ocean background
+  svg.append('rect')
+    .attr('class', 'ocean')
+    .attr('width', width)
+    .attr('height', height);
+
+  // Graticule
+  const graticule = d3.geoGraticule()();
+  svg.append('path')
+    .datum(graticule)
+    .attr('class', 'graticule')
+    .attr('d', pathGenerator);
+
+  // Load world topology
+  try {
+    const world = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    const countriesData = topojson.feature(world, world.objects.countries);
+
+    // continent mapping by country numeric id
+    const continentMap = getContinentMap();
+
+    countries = svg.selectAll('.country')
+      .data(countriesData.features)
+      .enter()
+      .append('path')
+      .attr('class', 'country')
+      .attr('d', pathGenerator)
+      .attr('data-id', d => d.id)
+      .attr('data-continent', d => continentMap[d.id] || 'Unknown')
+      .attr('data-name', d => getCountryName(d.id))
+      .on('mouseenter', function(e, d) {
+        const name = getCountryName(d.id);
+        const continent = continentMap[d.id] || 'Unknown';
+        showTooltip(e, name, continent);
+
+        // show painted color in tooltip
+        const painted = paintedColors[d.id];
+        const ttColor = document.getElementById('tt-color');
+        if (painted) {
+          ttColor.style.display = 'flex';
+          document.getElementById('tt-color-dot').style.background = painted;
+          document.getElementById('tt-color-label').textContent = painted;
+        } else {
+          ttColor.style.display = 'none';
+        }
+      })
+      .on('mousemove', function(e, d) {
+        const name = getCountryName(d.id);
+        const continent = continentMap[d.id] || 'Unknown';
+        showTooltip(e, name, continent);
+      })
+      .on('mouseleave', function() {
+        hideTooltip();
+      })
+      .on('click', function(e, d) {
+        e.stopPropagation();
+        if (currentTool === 'paint') {
+          paintCountry(this, currentColor);
+        } else if (currentTool === 'erase') {
+          paintCountry(this, null);
+        } else if (currentTool === 'circle') {
+          const rect = mapContainer.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          paintCircleArea(x, y);
+        }
+      });
+
+    // Borders
+    svg.append('path')
+      .datum(topojson.mesh(world, world.objects.countries, (a, b) => a !== b))
+      .attr('fill', 'none')
+      .attr('stroke', '#0a0a0a')
+      .attr('stroke-width', '0.8px')
+      .attr('d', pathGenerator);
+
+  } catch(err) {
+    console.error('Map load error:', err);
+    showFallbackMessage();
+  }
+}
+
+function showFallbackMessage() {
+  const container = document.getElementById('map-container');
+  const msg = document.createElement('div');
+  msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;color:#6b7a8d;text-align:center;padding:2rem';
+  msg.innerHTML = '<div style="font-size:3rem">🗺️</div><div style="font-size:1.1rem;font-weight:600;color:#e8edf2">Map needs internet connection</div><div style="font-size:0.875rem">Open this file in a browser with internet access.<br>The map loads from a CDN.</div>';
+  container.appendChild(msg);
+}
+
+// ══════════════════════════════════════════
+// COUNTRY NAMES DATABASE
+// ══════════════════════════════════════════
+function getCountryName(id) {
+  const names = {
+    '4':'Afghanistan','8':'Albania','12':'Algeria','24':'Angola','32':'Argentina','36':'Australia','40':'Austria','50':'Bangladesh','56':'Belgium','64':'Bhutan','68':'Bolivia','76':'Brazil','100':'Bulgaria','116':'Cambodia','120':'Cameroon','124':'Canada','144':'Sri Lanka','152':'Chile','156':'China','170':'Colombia','178':'Congo','180':'DR Congo','188':'Costa Rica','191':'Croatia','192':'Cuba','203':'Czech Republic','208':'Denmark','214':'Dominican Republic','218':'Ecuador','818':'Egypt','222':'El Salvador','231':'Ethiopia','246':'Finland','250':'France','276':'Germany','288':'Ghana','300':'Greece','320':'Guatemala','332':'Haiti','340':'Honduras','348':'Hungary','356':'India','360':'Indonesia','364':'Iran','368':'Iraq','372':'Ireland','376':'Israel','380':'Italy','388':'Jamaica','392':'Japan','400':'Jordan','398':'Kazakhstan','404':'Kenya','410':'South Korea','408':'North Korea','414':'Kuwait','418':'Laos','422':'Lebanon','430':'Liberia','434':'Libya','442':'Luxembourg','484':'Mexico','496':'Mongolia','504':'Morocco','508':'Mozambique','516':'Namibia','524':'Nepal','528':'Netherlands','554':'New Zealand','558':'Nicaragua','562':'Niger','566':'Nigeria','578':'Norway','586':'Pakistan','591':'Panama','604':'Peru','608':'Philippines','616':'Poland','620':'Portugal','630':'Puerto Rico','634':'Qatar','642':'Romania','643':'Russia','646':'Rwanda','682':'Saudi Arabia','686':'Senegal','694':'Sierra Leone','703':'Slovakia','705':'Slovenia','706':'Somalia','710':'South Africa','724':'Spain','736':'Sudan','752':'Sweden','756':'Switzerland','760':'Syria','158':'Taiwan','764':'Thailand','792':'Turkey','800':'Uganda','804':'Ukraine','784':'UAE','826':'United Kingdom','840':'United States','858':'Uruguay','860':'Uzbekistan','862':'Venezuela','704':'Vietnam','887':'Yemen','894':'Zambia','716':'Zimbabwe','729':'South Sudan','275':'Palestine','807':'North Macedonia','688':'Serbia','499':'Montenegro','70':'Bosnia','20':'Andorra','31':'Azerbaijan','51':'Armenia','112':'Belarus','268':'Georgia','440':'Lithuania','428':'Latvia','498':'Moldova','492':'Monaco','762':'Tajikistan','795':'Turkmenistan'
+  };
+  return names[id] || 'Country ' + id;
+}
+
+// ══════════════════════════════════════════
+// CONTINENT MAP
+// ══════════════════════════════════════════
+function getContinentMap() {
+  return {
+    '4':'Asia','8':'Europe','12':'Africa','24':'Africa','32':'South America','36':'Oceania','40':'Europe','50':'Asia','56':'Europe','64':'Asia','68':'South America','76':'South America','100':'Europe','104':'Asia','116':'Asia','120':'Africa','124':'North America','144':'Asia','152':'South America','156':'Asia','170':'South America','178':'Africa','180':'Africa','188':'North America','191':'Europe','192':'North America','203':'Europe','208':'Europe','214':'North America','218':'South America','818':'Africa','222':'North America','231':'Africa','246':'Europe','250':'Europe','266':'Africa','276':'Europe','288':'Africa','300':'Europe','320':'North America','332':'North America','340':'North America','348':'Europe','356':'Asia','360':'Asia','364':'Asia','368':'Asia','372':'Europe','376':'Asia','380':'Europe','388':'North America','392':'Asia','400':'Asia','398':'Asia','404':'Africa','410':'Asia','408':'Asia','414':'Asia','418':'Asia','422':'Asia','430':'Africa','434':'Africa','442':'Europe','484':'North America','496':'Asia','504':'Africa','508':'Africa','516':'Africa','524':'Asia','528':'Europe','554':'Oceania','558':'North America','562':'Africa','566':'Africa','578':'Europe','586':'Asia','591':'North America','604':'South America','608':'Asia','616':'Europe','620':'Europe','634':'Asia','642':'Europe','643':'Europe','646':'Africa','682':'Asia','686':'Africa','694':'Africa','703':'Europe','705':'Europe','706':'Africa','710':'Africa','724':'Europe','729':'Africa','736':'Africa','752':'Europe','756':'Europe','760':'Asia','158':'Asia','764':'Asia','792':'Asia','800':'Africa','804':'Europe','784':'Asia','826':'Europe','840':'North America','858':'South America','860':'Asia','862':'South America','704':'Asia','887':'Asia','894':'Africa','716':'Africa','174':'Africa','262':'Africa','232':'Africa','270':'Africa','624':'Africa','384':'Africa','450':'Africa','454':'Africa','466':'Africa','478':'Africa','480':'Africa','728':'Africa','834':'Africa','20':'Europe','233':'Europe','352':'Europe','470':'Europe','328':'South America','600':'South America','740':'South America','84':'North America','242':'Oceania','296':'Oceania','316':'Oceania','520':'Oceania','570':'Oceania','583':'Oceania','585':'Oceania','598':'Oceania','882':'Oceania','458':'Asia','462':'Asia','702':'Asia','7':'Antarctica','10':'Antarctica'
+  };
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+  svg && svg.selectAll('*').remove();
+  loadMap();
+});
+
+// Start
+loadMap();
+</script>
+</body>
+</html>
